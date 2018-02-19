@@ -65,6 +65,14 @@ Eigen::VectorXd polyfit(Eigen::VectorXd xvals, Eigen::VectorXd yvals,
   return result;
 }
 
+vector<double> map_to_car_coordinates(double psi, double px, double py, double mx, double my ){
+  // map to car coords
+  double car_x = (mx - px) * cos(psi) + (my - py) * sin(psi);
+  double car_y = (my - py) * cos(psi) - (mx - px) * sin(psi);
+  return {car_x, car_y};
+}
+
+
 int main() {
   uWS::Hub h;
 
@@ -93,39 +101,75 @@ int main() {
           double v = j[1]["speed"];
 
           /*
-          * TODO: Calculate steering angle and throttle using MPC.
+          * Calculate steeering angle and throttle using MPC.
           *
           * Both are in between [-1, 1].
           *
           */
-          double steer_value;
-          double throttle_value;
+          double* ptr_x = &ptsx[0];
+          double* ptr_y = &ptsy[0];
+
+          Eigen::Map<Eigen::VectorXd> ptsx_ev(ptr_x, ptsx.size());
+          Eigen::Map<Eigen::VectorXd> ptsy_ev(ptr_y, ptsy.size());
+
+          Eigen::VectorXd ptsx_car = Eigen::VectorXd(ptsx.size());
+          Eigen::VectorXd ptsy_car = Eigen::VectorXd(ptsx.size());
+
+          // Convert from map to car coords
+          for (unsigned int i = 0; i < ptsx.size(); i++){
+            auto tmp = map_to_car_coordinates(psi, px,py, ptsx[i], ptsy[i]);
+            ptsx_car[i] = tmp[0];
+            ptsy_car[i] = tmp[1];
+
+          }
+
+          auto coeffs = polyfit(ptsx_car, ptsy_car, 3);
+
+          double cte = polyeval(coeffs, 0);
+          double epsi = -atan(coeffs[1]);
+
+          // Create current state
+          Eigen::VectorXd state(6);
+          state << 0, 0, 0, v, cte, epsi;
+          // solve
+          auto result = mpc.Solve(state, coeffs);
+          
+          // steering and angle value
+          double steer_value = -result[0];
+          double throttle_value = result[1];
 
           json msgJson;
-          // NOTE: Remember to divide by deg2rad(25) before you send the steering value back.
-          // Otherwise the values will be in between [-deg2rad(25), deg2rad(25] instead of [-1, 1].
+
           msgJson["steering_angle"] = steer_value;
           msgJson["throttle"] = throttle_value;
 
-          //Display the MPC predicted trajectory 
+          // MPC predicted trajectory
           vector<double> mpc_x_vals;
           vector<double> mpc_y_vals;
 
-          //.. add (x,y) points to list here, points are in reference to the vehicle's coordinate system
-          // the points in the simulator are connected by a Green line
+          // Waypoints line
+          vector<double> wpsx;
+          vector<double> wpsy;
+
+          for (unsigned int i = 0; i < ptsx.size(); i++){
+            auto temp_car = map_to_car_coordinates(psi, px, py, ptsx[i], ptsy[i]);
+            wpsx.push_back(temp_car[0]);
+            wpsy.push_back(temp_car[1]);
+          }
+
+          auto N = (result.size() - 2) / 2;
+          for (unsigned int i = 3; i < N+2; i++) {
+            double x = result[i];
+            double y = result[i+N];
+            mpc_x_vals.push_back(x);
+            mpc_y_vals.push_back(y);
+          }
 
           msgJson["mpc_x"] = mpc_x_vals;
           msgJson["mpc_y"] = mpc_y_vals;
 
-          //Display the waypoints/reference line
-          vector<double> next_x_vals;
-          vector<double> next_y_vals;
-
-          //.. add (x,y) points to list here, points are in reference to the vehicle's coordinate system
-          // the points in the simulator are connected by a Yellow line
-
-          msgJson["next_x"] = next_x_vals;
-          msgJson["next_y"] = next_y_vals;
+          msgJson["next_x"] = wpsx;
+          msgJson["next_y"] = wpsy;
 
 
           auto msg = "42[\"steer\"," + msgJson.dump() + "]";
@@ -147,14 +191,13 @@ int main() {
         std::string msg = "42[\"manual\",{}]";
         ws.send(msg.data(), msg.length(), uWS::OpCode::TEXT);
       }
-    }
-  });
+  }
+});
 
   // We don't need this since we're not using HTTP but if it's removed the
   // program
   // doesn't compile :-(
-  h.onHttpRequest([](uWS::HttpResponse *res, uWS::HttpRequest req, char *data,
-                     size_t, size_t) {
+  h.onHttpRequest([](uWS::HttpResponse *res, uWS::HttpRequest req, char *data, size_t, size_t) {
     const std::string s = "<h1>Hello world!</h1>";
     if (req.getUrl().valueLength == 1) {
       res->end(s.data(), s.length());
@@ -168,8 +211,7 @@ int main() {
     std::cout << "Connected!!!" << std::endl;
   });
 
-  h.onDisconnection([&h](uWS::WebSocket<uWS::SERVER> ws, int code,
-                         char *message, size_t length) {
+  h.onDisconnection([&h](uWS::WebSocket<uWS::SERVER> ws, int code, char *message, size_t length) {
     ws.close();
     std::cout << "Disconnected" << std::endl;
   });
