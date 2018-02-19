@@ -25,3 +25,6 @@ Self-Driving Car Engineer Nanodegree Program
 >I used a third degree Polynomial to compute the trajectory of the car. I tried a higher degree polynomial but it was leading to overfitting.
 
 >I first found that 6 timesteps at a frequency of 15 worked good for low speeds like 20 mph but when I started to increment the speed I found that a higher timestep helped. I ended with velocity set to 60 mph with 9 timesteps and dt = 0.2
+
+### Latency
+>First I tried with low latency and I was able to get the car going very fast. With the 100 millisecond latency I needed to slow the car down to 60 mph for a smoother ride but the MPC is capable to handle the high latency which simulates the kind of latency found in real life.
