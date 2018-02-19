@@ -128,9 +128,20 @@ int main() {
           double cte = polyeval(coeffs, 0);
           double epsi = -atan(coeffs[1]);
 
-          // Create current state
+          // state after latency:
           Eigen::VectorXd state(6);
-          state << 0, 0, 0, v, cte, epsi;
+          // calculate state after 100 ms 
+          const double steer = j[1]["steering_angle"];
+          const double acc = j[1]["throttle"];
+          const double dt = 0.1;  //Latency time
+          const double Lf = 2.67;
+          const double late_px = v * dt;
+          const double late_py = 0.0;
+          const double late_psi = v / Lf * (-steer) * dt;
+          const double late_v = v + acc * dt;
+          const double late_cte = cte + v * sin(epsi) * dt;
+          const double late_epsi = epsi + v / Lf * (-steer) * dt;
+          state << late_px, late_py, late_psi, late_v, late_cte, late_epsi;
           // solve
           auto result = mpc.Solve(state, coeffs);
           
